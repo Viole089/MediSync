@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import get_current_user
-from app.services.mongo_service import users_collection
+from app.services.mongo_service import users_collection, audit_logs_collection
 from app.services.encryption_service import encrypt_patient_data, decrypt_patient_data
 from app.services.crypto_utils import derive_kek, decrypt_aes_gcm
 import base64
 from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter()
 
-@router.patch("update_patient_history/{cin}")
+
+@router.patch("/update_patient_history/{cin}")
 async def update_patient_history(cin: str, new_record: dict, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "doctor":
         raise HTTPException(status_code=403, detail="Only doctors can update patient data.")
@@ -42,6 +44,7 @@ async def update_patient_history(cin: str, new_record: dict, current_user: dict 
     audit_logs_collection.insert_one(audit_entry)
     return {"message": "Medical history updated and encrypted successfully"}
 
+
 @router.get("/doctor/get_patient_history/{cin}")
 async def get_patient_history(cin: str, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "doctor":
@@ -61,9 +64,9 @@ async def get_patient_history(cin: str, current_user: dict = Depends(get_current
     decrypted_records = []
     for entry in patient["medical_history"]:
         dek_bytes = bytes.fromhex(dek.decode())
-
         decrypted_entry = decrypt_patient_data(dek_bytes, entry["medical_data_nonce"], entry["encrypted_medical_data"])
         decrypted_records.append(decrypted_entry)
+
     audit_entry = {
         "doctor_email": current_user["sub"],
         "patient_cin": cin,
@@ -72,3 +75,4 @@ async def get_patient_history(cin: str, current_user: dict = Depends(get_current
     }
     audit_logs_collection.insert_one(audit_entry)
     return {"medical_history": decrypted_records}
+
