@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.models.user_model import UserLogin, UserCreatePatient, UserCreateDoctor
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.services.mongo_service import users_collection, patients_collection, doctors_collection
+from pymongo.errors import DuplicateKeyError
 
 router = APIRouter()
 
@@ -14,7 +15,6 @@ async def register_patient(user: UserCreatePatient):
 
     hashed_pw = get_password_hash(user.password)
 
-    # Créer user général
     new_user = {
         "email": user.email,
         "hashed_password": hashed_pw,
@@ -24,13 +24,17 @@ async def register_patient(user: UserCreatePatient):
     }
     users_collection.insert_one(new_user)
 
-    # Créer patient spécifique
     new_patient = {
         "email": user.email,
         "cin": user.cin,
-        "medical_history": {}  # Vide au début
+        "medical_history": {}  
     }
-    patients_collection.insert_one(new_patient)
+        
+    try:
+        patients_collection.insert_one(new_patient)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="CIN already exists for another patient")
+
 
     return {"message": "Patient registered successfully"}
 
@@ -42,23 +46,21 @@ async def register_doctor(user: UserCreateDoctor):
 
     hashed_pw = get_password_hash(user.password)
 
-    # Créer user général
     new_user = {
         "email": user.email,
         "hashed_password": hashed_pw,
         "role": "doctor",
         "cin": user.cin,
-        "is_active": False,  # On attend validation admin
+        "is_active": False,  
         "pending_validation": True
     }
     users_collection.insert_one(new_user)
 
-    # Créer doctor spécifique
     new_doctor = {
         "email": user.email,
         "cin": user.cin,
-        "specialties": [],    # Vide à remplir plus tard
-        "validated": False    # Pas encore validé
+        "specialties": [],    
+        "validated": False    
     }
     doctors_collection.insert_one(new_doctor)
 

@@ -4,6 +4,7 @@ from app.services.mongo_service import users_collection
 from app.services.encryption_service import encrypt_patient_data, decrypt_patient_data
 from app.services.crypto_utils import derive_kek, decrypt_aes_gcm
 import base64
+from datetime import datetime
 
 router = APIRouter()
 
@@ -32,7 +33,13 @@ async def update_patient_history(cin: str, new_record: dict, current_user: dict 
         }
     }
     users_collection.update_one({"cin": cin}, update_query)
-
+    audit_entry = {
+        "doctor_email": current_user["sub"],
+        "patient_cin": cin,
+        "action": "Updated patient's medical history",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    audit_logs_collection.insert_one(audit_entry)
     return {"message": "Medical history updated and encrypted successfully"}
 
 @router.get("/doctor/get_patient_history/{cin}")
@@ -57,5 +64,11 @@ async def get_patient_history(cin: str, current_user: dict = Depends(get_current
 
         decrypted_entry = decrypt_patient_data(dek_bytes, entry["medical_data_nonce"], entry["encrypted_medical_data"])
         decrypted_records.append(decrypted_entry)
-
+    audit_entry = {
+        "doctor_email": current_user["sub"],
+        "patient_cin": cin,
+        "action": "Retrieved patient's medical summary",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    audit_logs_collection.insert_one(audit_entry)
     return {"medical_history": decrypted_records}
